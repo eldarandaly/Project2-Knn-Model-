@@ -172,9 +172,10 @@ class Worker1(QThread):
                                 cv2.FONT_HERSHEY_SIMPLEX, 0.5, (0,255,0), 2)
                             cv2.rectangle(Image, (x, y), (x+w,y+h),
                                 (0, 255, 0), 2)
+                                #Start Here -------------------------------- To Be Fixed
                     process_this_frame = process_this_frame + 1
                     if process_this_frame % 10 == 0:
-                        predictions = predict(Image, model_path="trained_knn_modelOneShot1.clf") # low fps from predictio 
+                        predictions = predict(Image, model_path="trained_knn_modelOneShot1.clf") 
                     Image = show_prediction_labels_on_image(Image, predictions)
                     #cv2.putText(frame,f'FPS:{int(fps)}',(10,10),cv2.FONT_HERSHEY_PLAIN,1,(255,0,0),2)
                     #FlippedImage = cv2.flip(Image,1)
