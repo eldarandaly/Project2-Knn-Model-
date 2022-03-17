@@ -14,10 +14,7 @@ from face_recognition.face_recognition_cli import image_files_in_folder
 import numpy as np
 import time
 import imutils
-import cv2
 from tensorflow.keras.preprocessing.image import img_to_array
-import os
-import numpy as np
 from tensorflow.keras.models import model_from_json
 
 root_dir = os.getcwd()
@@ -28,12 +25,10 @@ json_file = open('antispoofing_models/antispoofing_model.json','r')
 loaded_model_json = json_file.read()
 json_file.close()
 model = model_from_json(loaded_model_json)
+
 # load antispoofing model weights 
 model.load_weights('antispoofing_models/antispoofing_model.h5')
 print("Model loaded from disk")
-# video.open("http://192.168.1.101:8080/video")
-# vs = VideoStream(src=0).start()
-# time.sleep(2.0)
 
 def predict(X_frame, knn_clf=None, model_path=None, distance_threshold=0.5):
     """
@@ -71,7 +66,6 @@ def predict(X_frame, knn_clf=None, model_path=None, distance_threshold=0.5):
 
     # Predict classes and remove classifications that aren't within the threshold
     return [(pred, loc) if rec else ("unknown.NoID", loc) for pred, loc, rec in zip(knn_clf.predict(faces_encodings), X_face_locations, are_matches)]
-
 
 def show_prediction_labels_on_image(frame, predictions):
     """
@@ -114,7 +108,6 @@ def show_prediction_labels_on_image(frame, predictions):
 
     opencvimage = np.array(pil_image)
     return opencvimage
-
 
 class MainWindow(QWidget):
     def __init__(self):
@@ -188,7 +181,6 @@ class Worker1(QThread):
     def stop(self):
         self.ThreadActive = False
         self.quit()
-
 
 if __name__ == "__main__":
     App = QApplication(sys.argv)
