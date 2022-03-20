@@ -145,7 +145,7 @@ class MainWindow(QMainWindow):
 		self.setCentralWidget(self.viewfinder)
 
 		# Set the default camera.
-		self.select_camera(0)
+		self.select_camera('rtsp://admin:TZZUNI@192.168.1.58/')
 
 		# creating a tool bar
 		toolbar = QToolBar("Camera Tool Bar")

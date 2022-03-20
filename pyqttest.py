@@ -14,8 +14,84 @@ from face_recognition.face_recognition_cli import image_files_in_folder
 import numpy as np
 import time
 import imutils
+from imutils.video import VideoStream
+import threading
+
+ipcam="rtsp://admin:TZZUNI@192.168.1.58/"
+vdSt=VideoStream(ipcam)
+
 from tensorflow.keras.preprocessing.image import img_to_array
 from tensorflow.keras.models import model_from_json
+
+class FreshestFrame(threading.Thread):
+	def __init__(self, capture, name='FreshestFrame'):
+		self.capture = capture
+		assert self.capture.isOpened()
+
+		# this lets the read() method block until there's a new frame
+		self.cond = threading.Condition()
+
+		# this allows us to stop the thread gracefully
+		self.running = False
+
+		# keeping the newest frame around
+		self.frame = None
+
+		# passing a sequence number allows read() to NOT block
+		# if the currently available one is exactly the one you ask for
+		self.latestnum = 0
+
+		# this is just for demo purposes		
+		self.callback = None
+		
+		super().__init__(name=name)
+		self.start()
+
+	def start(self):
+		self.running = True
+		super().start()
+
+	def release(self, timeout=None):
+		self.running = False
+		self.join(timeout=timeout)
+		self.capture.release()
+
+	def run(self):
+		counter = 0
+		while self.running:
+			# block for fresh frame
+			(rv, img) = self.capture.read()
+			assert rv
+			counter += 1
+
+			# publish the frame
+			with self.cond: # lock the condition for this operation
+				self.frame = img if rv else None
+				self.latestnum = counter
+				self.cond.notify_all()
+
+			if self.callback:
+				self.callback(img)
+
+	def read(self, wait=True, seqnumber=None, timeout=None):
+		# with no arguments (wait=True), it always blocks for a fresh frame
+		# with wait=False it returns the current frame immediately (polling)
+		# with a seqnumber, it blocks until that frame is available (or no wait at all)
+		# with timeout argument, may return an earlier frame;
+		#   may even be (0,None) if nothing received yet
+
+		with self.cond:
+			if wait:
+				if seqnumber is None:
+					seqnumber = self.latestnum+1
+				if seqnumber < 1:
+					seqnumber = 1
+				
+				rv = self.cond.wait_for(lambda: self.latestnum >= seqnumber, timeout=timeout)
+				if not rv:
+					return (self.latestnum, self.frame)
+
+			return (self.latestnum, self.frame)
 
 root_dir = os.getcwd()
 # Load Face Detection Model
@@ -86,10 +162,12 @@ def show_prediction_labels_on_image(frame, predictions):
         left *= 1
         ID=name.split('.')[1]
         name=name.split('.')[0]
-        #print(name,ID)
+        print(name,ID)
         # Draw a box around the face using the Pillow module
-        draw.rectangle(((left, top), (right, bottom)), outline=(0, 0, 255))
-
+        if name!='unknown':
+           draw.rectangle(((left, top), (right, bottom)), outline=(0, 0, 255))
+        else:
+            draw.rectangle(((left, top), (right, bottom)), outline=(255, 0, 0))
         # There's a bug in Pillow where it blows up with non-UTF-8 text
         # when using the default bitmap font
         name = name.encode("UTF-8")
@@ -138,43 +216,50 @@ class Worker1(QThread):
     ImageUpdate = pyqtSignal(QImage)
     def run(self):
         self.ThreadActive = True
-        Capture = cv2.VideoCapture(0)
-        process_this_frame=9
+        os.environ["OPENCV_FFMPEG_CAPTURE_OPTIONS"] = "rtsp_transport;udp"
+        video_capture = cv2.VideoCapture("rtsp://admin:TZZUNI@192.168.1.58:554/H.264", cv2.CAP_FFMPEG)
+        video_capture.set(cv2.CAP_PROP_FPS, 60) 
+        fresh = FreshestFrame(video_capture) 
+        process_this_frame=59
         while self.ThreadActive:
             try:
-                ret, frame = Capture.read()
-                if ret:
-                    Image = cv2.cvtColor(frame, cv2.COLOR_BGR2RGB)
-                    gray = cv2.cvtColor(frame,cv2.COLOR_BGR2GRAY)
-                    faces = face_cascade.detectMultiScale(gray,1.3,5)
-                    for (x,y,w,h)in faces:
-                        face=Image[y-5:y+h+5,x-5:x+w+5]
-                        resized_face=cv2.resize(face,(160,160))
-                        resized_face = resized_face.astype("float") / 255.0
-                        resized_face = np.expand_dims(resized_face, axis=0)
-                        preds = model.predict(resized_face)[0]
-                        if preds>0.4:
-                            label = 'spoof'
-                            cv2.putText(Image, label, (x,y - 10),
-                                cv2.FONT_HERSHEY_SIMPLEX, 0.5, (0,0,255), 2)
-                            cv2.rectangle(Image, (x, y), (x+w,y+h),
-                                (0, 0, 255), 2)
-                        else:
-                            label = 'real'
-                            cv2.putText(Image, label, (x,y - 10),
-                                cv2.FONT_HERSHEY_SIMPLEX, 0.5, (0,255,0), 2)
-                            cv2.rectangle(Image, (x, y), (x+w,y+h),
-                                (0, 255, 0), 2)
-                                #Start Here -------------------------------- To Be Fixed
-                    process_this_frame = process_this_frame + 1
-                    if process_this_frame % 10 == 0:
-                        predictions = predict(Image, model_path="trained_knn_modelOneShot1.clf") 
-                    Image = show_prediction_labels_on_image(Image, predictions)
-                    #cv2.putText(frame,f'FPS:{int(fps)}',(10,10),cv2.FONT_HERSHEY_PLAIN,1,(255,0,0),2)
-                    #FlippedImage = cv2.flip(Image,1)
-                    ConvertToQtFormat = QImage(Image.data, Image.shape[1], Image.shape[0], QImage.Format_RGB888)
-                    Pic = ConvertToQtFormat.scaled(640, 480, Qt.KeepAspectRatio)
-                    self.ImageUpdate.emit(Pic)
+                ret, frame = fresh.read()
+                if frame is None:
+                    continue
+                frame = cv2.resize(frame, (0, 0), fx=0.5, fy=0.5)  
+                Image = cv2.cvtColor(frame, cv2.COLOR_BGR2RGB)
+                gray = cv2.cvtColor(frame,cv2.COLOR_BGR2GRAY)
+                faces = face_cascade.detectMultiScale(gray,1.3,5)
+                
+                for (x,y,w,h)in faces:
+                    face=Image[y-5:y+h+5,x-5:x+w+5]
+                    resized_face=cv2.resize(face,(160,160))
+                    resized_face = resized_face.astype("float") / 255.0
+                    resized_face = np.expand_dims(resized_face, axis=0)
+                    preds = model.predict(resized_face)[0]
+
+                    if preds>0.8:
+                        label = 'spoof'
+                        cv2.putText(Image, label, (x,y - 10),
+                            cv2.FONT_HERSHEY_SIMPLEX, 0.5, (0,0,255), 2)
+                        cv2.rectangle(Image, (x, y), (x+w,y+h),
+                            (0, 0, 255), 2)
+                    else:
+                        label = 'real'
+                        cv2.putText(Image, label, (x,y - 10),
+                            cv2.FONT_HERSHEY_SIMPLEX, 0.5, (0,255,0), 2)
+                        cv2.rectangle(Image, (x, y), (x+w,y+h),
+                            (0, 255, 0), 2)
+                            #Start Here -------------------------------- To Be Fixed
+                process_this_frame = process_this_frame + 1
+                if process_this_frame % 60 == 0:
+                    predictions = predict(Image, model_path="trained_knn_modelOneShot1.clf") 
+                Image = show_prediction_labels_on_image(Image, predictions)
+                #cv2.putText(frame,f'FPS:{int(fps)}',(10,10),cv2.FONT_HERSHEY_PLAIN,1,(255,0,0),2)
+                #FlippedImage = cv2.flip(Image,1)
+                ConvertToQtFormat = QImage(Image.data, Image.shape[1], Image.shape[0], QImage.Format_RGB888)
+                Pic = ConvertToQtFormat.scaled(640, 480, Qt.KeepAspectRatio)
+                self.ImageUpdate.emit(Pic)
             except Exception as e:
                 pass        
 
