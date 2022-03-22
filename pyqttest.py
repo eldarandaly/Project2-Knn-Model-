@@ -17,8 +17,7 @@ import imutils
 from imutils.video import VideoStream
 import threading
 
-ipcam="rtsp://admin:TZZUNI@192.168.1.58/"
-vdSt=VideoStream(ipcam)
+
 
 from tensorflow.keras.preprocessing.image import img_to_array
 from tensorflow.keras.models import model_from_json
@@ -220,12 +219,13 @@ class Worker1(QThread):
         video_capture = cv2.VideoCapture("rtsp://admin:TZZUNI@192.168.1.58:554/H.264", cv2.CAP_FFMPEG)
         video_capture.set(cv2.CAP_PROP_FPS, 60) 
         fresh = FreshestFrame(video_capture) 
-        process_this_frame=59
+        process_this_frame=29
         while self.ThreadActive:
             try:
                 ret, frame = fresh.read()
                 if frame is None:
                     continue
+                timer =time.time()
                 frame = cv2.resize(frame, (0, 0), fx=0.5, fy=0.5)  
                 Image = cv2.cvtColor(frame, cv2.COLOR_BGR2RGB)
                 gray = cv2.cvtColor(frame,cv2.COLOR_BGR2GRAY)
@@ -251,14 +251,17 @@ class Worker1(QThread):
                         cv2.rectangle(Image, (x, y), (x+w,y+h),
                             (0, 255, 0), 2)
                             #Start Here -------------------------------- To Be Fixed
+                endtimer = time.time()
+                fps = 1/(endtimer-timer)
+                cv2.rectangle(frame,(15,30),(135,60),(0,255,255),-1)
                 process_this_frame = process_this_frame + 1
-                if process_this_frame % 60 == 0:
+                if process_this_frame % 30 == 0:
                     predictions = predict(Image, model_path="trained_knn_modelOneShot1.clf") 
                 Image = show_prediction_labels_on_image(Image, predictions)
-                #cv2.putText(frame,f'FPS:{int(fps)}',(10,10),cv2.FONT_HERSHEY_PLAIN,1,(255,0,0),2)
+                cv2.putText(Image,f'FPS:{int(fps)}',(10,10),cv2.FONT_HERSHEY_PLAIN,1,(255,0,0),2)
                 #FlippedImage = cv2.flip(Image,1)
                 ConvertToQtFormat = QImage(Image.data, Image.shape[1], Image.shape[0], QImage.Format_RGB888)
-                Pic = ConvertToQtFormat.scaled(640, 480, Qt.KeepAspectRatio)
+                Pic = ConvertToQtFormat.scaled(1080, 720, Qt.KeepAspectRatio)
                 self.ImageUpdate.emit(Pic)
             except Exception as e:
                 pass        
