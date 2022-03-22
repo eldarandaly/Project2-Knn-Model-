@@ -6,7 +6,7 @@
 
 # Run PyQT Test .py and change 
 From
-        os.environ["OPENCV_FFMPEG_CAPTURE_OPTIONS"] = "rtsp_transport;udp"
+        #os.environ["OPENCV_FFMPEG_CAPTURE_OPTIONS"] = "rtsp_transport;udp"
         video_capture = cv2.VideoCapture("rtsp://admin:TZZUNI@192.168.1.58:554/H.264", cv2.CAP_FFMPEG)
         video_capture.set(cv2.CAP_PROP_FPS, 60) 
         fresh = FreshestFrame(video_capture) 
